@@ -1,7 +1,7 @@
 {
   "name": "wemg",
   "productName": "WEMG",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Download video as MP4 or audio as MP3. macOS Apple Silicon.",
   "main": "src/main.js",
   "author": "whiteleypa",

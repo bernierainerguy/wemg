@@ -385,7 +385,12 @@ window.api.onLicenceUpdated(applyVerdict);
 
   syncQualityCeiling();
 
-  applyVerdict(await window.api.licenceState());
+  try {
+    applyVerdict(await window.api.licenceState());
+  } catch (err) {
+    // Fail closed: no verdict means no downloading.
+    applyVerdict({ allowed: false, reason: 'denied', state: { deniedReason: String(err.message || err) } });
+  }
 
   try {
     setStatus('Checking downloader…');

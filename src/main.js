@@ -8,7 +8,7 @@ const { ensureYtDlp, ffmpegPath } = require('./binaries');
 const licence = require('./licence');
 
 let mainWindow = null;
-let currentProc = null;
+let downloadProc = null;
 let cancelled = false;
 
 function createWindow() {
@@ -45,8 +45,9 @@ const LEGAL_DOCS = {
 };
 
 function legalPath(file) {
-  // Packaged, legal/ sits inside the asar; in development it is beside src/.
-  return path.join(app.isPackaged ? process.resourcesPath : __dirname, '..', 'legal', file);
+  // legal/ sits beside src/ — inside the asar once packaged, on disk in
+  // development. __dirname resolves correctly in both cases.
+  return path.join(__dirname, '..', 'legal', file);
 }
 
 function readLegal(key) {
@@ -115,10 +116,13 @@ function defaultOutputDir() {
   }
 }
 
-function runYtDlp(binary, args, onLine) {
+// `track` marks the long-running download, which is the only process Cancel
+// should ever kill. Metadata lookups run alongside it and must not become the
+// cancel target.
+function runYtDlp(binary, args, onLine, { track = false } = {}) {
   return new Promise((resolve, reject) => {
     const proc = spawn(binary, args, { windowsHide: true });
-    currentProc = proc;
+    if (track) downloadProc = proc;
 
     let stderr = '';
     let buffer = '';
@@ -137,12 +141,12 @@ function runYtDlp(binary, args, onLine) {
     });
 
     proc.on('error', (err) => {
-      currentProc = null;
+      if (track) downloadProc = null;
       reject(err);
     });
 
     proc.on('close', (code) => {
-      currentProc = null;
+      if (track) downloadProc = null;
       if (buffer.trim()) onLine(buffer.trim());
       if (code === 0) return resolve();
       if (cancelled) return reject(new Error('Cancelled'));
@@ -307,7 +311,7 @@ ipcMain.handle('media:download', async (_evt, opts) => {
     if (dest) lastFile = dest[1];
 
     send('download:log', line);
-  });
+  }, { track: true });
 
   return { file: lastFile, outputDir };
 });
@@ -329,8 +333,8 @@ ipcMain.handle('licence:checkin', async () => {
 
 ipcMain.handle('media:cancel', () => {
   cancelled = true;
-  if (currentProc) {
-    currentProc.kill('SIGTERM');
+  if (downloadProc) {
+    downloadProc.kill('SIGTERM');
     return true;
   }
   return false;
@@ -386,6 +390,6 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (currentProc) currentProc.kill('SIGTERM');
+  if (downloadProc) downloadProc.kill('SIGTERM');
   if (process.platform !== 'darwin') app.quit();
 });
